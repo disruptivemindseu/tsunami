@@ -24,11 +24,25 @@ The tool reads declarative YAML configuration files and automates the entire pro
 
 The Xen Orchestra provider is configured via environment variables. Set these before running:
 
+**Using username and password:**
+
 ```bash
-export XENORCHESTRA_URL="https://your-xen-orchestra-instance.com"
-export XENORCHESTRA_USERNAME="your-username"
-export XENORCHESTRA_PASSWORD="your-password"
-export XENORCHESTRA_INSECURE="true"  # Only if using self-signed certificates
+export XOA_URL="https://your-xen-orchestra-instance.com"
+export XOA_USERNAME="your-username"
+export XOA_PASSWORD="your-password"
+```
+
+**Or using an authentication token (recommended):**
+
+```bash
+export XOA_URL="https://your-xen-orchestra-instance.com"
+export XOA_TOKEN="your-api-token"
+```
+
+**For self-signed certificates (optional):**
+
+```bash
+export XOA_INSECURE="true"
 ```
 
 ### 2. Virtual Machines Configuration (`config/virtual_machines.yml`)
@@ -334,10 +348,19 @@ Modify network settings in `terraform/main.tf` (locals: cloud_network_config sec
 
 ## Environment Variables
 
-- `XENORCHESTRA_URL`: Xen Orchestra API URL
-- `XENORCHESTRA_USERNAME`: API username
-- `XENORCHESTRA_PASSWORD`: API password
-- `XENORCHESTRA_INSECURE`: Set to "true" for self-signed certificates
+Xen Orchestra authentication (choose one method):
+
+**Method 1: Username and password**
+- `XOA_URL`: Xen Orchestra API URL
+- `XOA_USERNAME`: API username
+- `XOA_PASSWORD`: API password
+
+**Method 2: Authentication token (recommended)**
+- `XOA_URL`: Xen Orchestra API URL
+- `XOA_TOKEN`: API token
+
+**Optional:**
+- `XOA_INSECURE`: Set to "true" for self-signed certificates
 
 ## License
 
