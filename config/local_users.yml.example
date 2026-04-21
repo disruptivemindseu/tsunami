@@ -1,0 +1,15 @@
+example_user:
+  gecos: "Example User"
+  shell: "/bin/bash"
+  passwd: "$6$examplepwdsalt$examplehashedpassword"
+  lock_passwd: false
+  ssh_authorized_keys:
+    - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACA... example@hostname"
+
+# another_user:
+#   gecos: "Another User"
+#   shell: "/bin/bash"
+#   passwd: "$6$anothersalt$anotherhashedpassword"
+#   lock_passwd: false
+#   ssh_authorized_keys:
+#     - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@hostname"

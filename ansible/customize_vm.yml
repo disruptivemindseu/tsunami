@@ -1,0 +1,38 @@
+---
+- name: Customize virtual machines
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    ansible_ssh_common_args: -o StrictHostKeyChecking=false
+  tasks:
+
+    - name: Wait for SSH to be available
+      ansible.builtin.wait_for_connection:
+        delay: 10
+        timeout: 300
+
+    - name: Gather facts
+      ansible.builtin.setup:
+
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_facts["os_family"] == "Debian"
+
+    - name: Install vim
+      ansible.builtin.apt:
+        name: vim
+        state: present
+      when: ansible_facts["os_family"] == "Debian"
+
+    - name: Install tmux
+      ansible.builtin.apt:
+        name: tmux
+        state: present
+      when: ansible_facts["os_family"] == "Debian"
+
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg: "VM customization completed - vim and tmux installed"

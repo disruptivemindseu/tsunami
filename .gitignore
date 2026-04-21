@@ -1,0 +1,13 @@
+config/local_users.yml
+config/virtual_machines.yml
+
+# Terraform
+.terraform/
+terraform.tfstate
+terraform.tfstate.*
+*.tfvars
+*.tfvars.json
+tfplan
+crash.log
+crash.*.log
+.DS_Store
