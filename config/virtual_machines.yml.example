@@ -1,5 +1,8 @@
 ---
 vm1.example.com:
+  # Optional: override the VM name in Xen Orchestra (defaults to "vm1.example.com" if not set)
+  # name: "application-server"
+  description: Primary application server
   boot_firmware: uefi
   cpus: 4
   disks:
@@ -24,6 +27,9 @@ vm1.example.com:
     - test
   template: Debian 13 (cloud-init)
 vm2.example.com:
+  # Optional: example with custom VM name
+  # name: "backup-server"
+  description: Secondary backup server
   boot_firmware: uefi
   cpus: 2
   disks:

@@ -7,13 +7,9 @@
     ansible_ssh_common_args: -o StrictHostKeyChecking=false
   tasks:
 
-    - name: Wait for SSH to be available
-      ansible.builtin.wait_for_connection:
-        delay: 10
-        timeout: 300
-
-    - name: Gather facts
-      ansible.builtin.setup:
+    - name: Wait 60 seconds before attempting SSH (first connection - system boot)
+      ansible.builtin.pause:
+        seconds: 60
 
     - name: Check if cloud-init network config exists
       ansible.builtin.stat:
@@ -30,7 +26,6 @@
     - name: Parse IPv4 address
       ansible.builtin.set_fact:
         ipv4_address_full: "{{ cloud_init_config.content | b64decode | regex_search('address (\\S+)', '\\1') | first }}"
-        ipv4_address: "{{ (cloud_init_config.content | b64decode | regex_search('address (\\S+)', '\\1') | first).split('/')[0] }}"
       when: cloud_init_config_file.stat.exists
 
     - name: Parse IPv4 gateway
@@ -40,13 +35,12 @@
 
     - name: Parse IPv6 address
       ansible.builtin.set_fact:
-        ipv6_address_full: "{{ cloud_init_config.content | b64decode | regex_search('inet6[\\s\\S]*?address (\\S+)', '\\1') | first }}"
-        ipv6_address: "{{ (cloud_init_config.content | b64decode | regex_search('inet6[\\s\\S]*?address (\\S+)', '\\1') | first).split('/')[0] }}"
+        ipv6_address_full: "{{ (cloud_init_config.content | b64decode | regex_search('inet6[\\s\\S]*?address (\\S+)', '\\1') or []) | first | default('') }}"
       when: cloud_init_config_file.stat.exists
 
     - name: Parse IPv6 gateway
       ansible.builtin.set_fact:
-        ipv6_gateway: "{{ cloud_init_config.content | b64decode | regex_search('inet6[\\s\\S]*?gateway (\\S+)', '\\1') | first }}"
+        ipv6_gateway: "{{ (cloud_init_config.content | b64decode | regex_search('inet6[\\s\\S]*?gateway (\\S+)', '\\1') or []) | first | default('') }}"
       when: cloud_init_config_file.stat.exists
 
     - name: Parse DNS nameservers
@@ -102,10 +96,12 @@
             gateway {{ ipv4_gateway }}
             dns-nameservers {{ dns_nameservers }}
             dns-search {{ dns_search }}
+          {% if ipv6_address_full %}
 
           iface enX0 inet6 static
             address {{ ipv6_address_full }}
             gateway {{ ipv6_gateway }}
+          {% endif %}
         dest: /etc/network/interfaces
         backup: true
         mode: '0644'
@@ -116,7 +112,7 @@
         msg: |
           Cloud-init has been removed and network configuration updated
           IPv4: {{ ipv4_address_full }} (gw: {{ ipv4_gateway }})
-          IPv6: {{ ipv6_address_full }} (gw: {{ ipv6_gateway }})
+          {% if ipv6_address_full %}IPv6: {{ ipv6_address_full }} (gw: {{ ipv6_gateway }}){% endif %}
       when: cloud_init_config_file.stat.exists
 
     - name: Display removal result (no config file)

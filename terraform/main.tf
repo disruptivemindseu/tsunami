@@ -102,14 +102,14 @@ data "xenorchestra_sr" "sr" {
 
 resource "xenorchestra_vm" "vm" {
   for_each         = local.vms
-  name_label       = each.key
-  name_description = each.key
+  name_label       = try(each.value.name, each.key)
+  name_description = try(each.value.description, "")
   cpus             = each.value.cpus
   memory_max       = each.value.memory * 1024 * 1024 # Convert MB to bytes
-  tags             = try(each.value.tags, [])
+  tags             = concat(try(each.value.tags, []), ["fqdn:${each.key}"])
 
   template                            = data.xenorchestra_template.template[each.value.template].id
-  clone_type                          = "fast"
+  clone_type                          = "full"
   hvm_boot_firmware                   = try(each.value.boot_firmware, "uefi")
   cloud_config                        = local.cloud_config[each.key]
   cloud_network_config                = local.cloud_network_config[each.key]

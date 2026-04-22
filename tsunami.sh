@@ -12,6 +12,7 @@ TERRAFORM_DIR=""
 CONFIG_DIR=""
 TFPLAN_FILE=""
 CLEANUP_TFPLAN=0
+ANSIBLE_INVENTORY=""
 
 cleanup_on_error() {
     local line_number=$?
@@ -27,6 +28,16 @@ cleanup_on_exit() {
     if [ "$CLEANUP_TFPLAN" -eq 1 ] && [ -f "$TFPLAN_FILE" ]; then
         rm -f "$TFPLAN_FILE"
     fi
+    if [ -f "$ANSIBLE_INVENTORY" ]; then
+        rm -f "$ANSIBLE_INVENTORY"
+    fi
+}
+
+# Extract password from template name
+# Template name format: template-{PASSWORD}_{TIMESTAMP}
+extract_template_password() {
+    local template_name="$1"
+    echo "$template_name" | sed 's/^template-//' | sed 's/_[0-9]*$//'
 }
 
 # Check if command exists
@@ -146,44 +157,93 @@ run_apply() {
     echo "✅ Terraform apply completed successfully!"
     echo ""
 
-    # Extract IPs and run Ansible playbook
-    echo "Extracting VM IP addresses..."
-    if ! IPS=$(grep -A 10 "networks:" "$CONFIG_DIR/virtual_machines.yml" | grep "ip:" | grep -oE "([0-9]{1,3}\.){3}[0-9]{1,3}"); then
-        echo "❌ Error: Failed to extract IP addresses from configuration" >&2
-        exit 1
+    # Check if custom users are configured
+    if [ -f "$CONFIG_DIR/local_users.yml" ]; then
+        echo "⚠️  WARNING: Custom users configured (local_users.yml exists)"
+        echo "   Template user will be DELETED during VM setup"
+        echo "   You must create an Ansible inventory file with your custom user credentials:"
+        echo ""
+        echo "   Create inventory file (e.g., inventory.ini):"
+        echo "   ---"
+        echo "   192.168.1.10 ansible_user=myuser ansible_ssh_pass=mypassword ansible_become_password=mypassword"
+        echo "   192.168.1.11 ansible_user=myuser ansible_ssh_pass=mypassword ansible_become_password=mypassword"
+        echo "   ---"
+        echo ""
+        echo "   Then run playbooks:"
+        echo "   ansible-playbook -i inventory.ini $SCRIPT_DIR/ansible/remove_cloud_init.yml"
+        echo "   ansible-playbook -i inventory.ini $SCRIPT_DIR/ansible/customize_vm.yml"
+        echo ""
+        read -rp "Continue with manual Ansible setup? (yes/no): " confirmation
+        if [[ ! $confirmation =~ ^[Yy][Ee][Ss]$ ]]; then
+            echo "Deployment cancelled."
+            exit 0
+        fi
+        ANSIBLE_INVENTORY=""
+    else
+        # Extract template name and derive password
+        echo "Extracting template information..."
+        TEMPLATE_NAME=$(grep "template:" "$CONFIG_DIR/virtual_machines.yml" | head -1 | awk '{print $2}')
+        TEMPLATE_PASSWORD=$(extract_template_password "$TEMPLATE_NAME")
+        echo "  Template: $TEMPLATE_NAME"
+        echo "  Username: template"
+        echo "  Password: $TEMPLATE_PASSWORD"
+
+        # Extract IPs and run Ansible playbook
+        echo "Extracting VM IP addresses..."
+        IPS=$(grep -E "^\s+ip:\s+" "$CONFIG_DIR/virtual_machines.yml" | grep -oE "([0-9]{1,3}\.){3}[0-9]{1,3}")
+
+        if [ -z "$IPS" ]; then
+            echo "❌ Error: No IP addresses found in virtual_machines.yml" >&2
+            echo "   Expected format: '      ip: 192.168.1.10'" >&2
+            exit 1
+        fi
+
+        echo "  Found IPs: $(echo "$IPS" | tr '\n' ' ')"
+
+        # Clean old host keys from known_hosts (for reused IPs)
+        echo "Cleaning old host keys from ~/.ssh/known_hosts..."
+        for ip in $(echo "$IPS" | tr '\n' ' '); do
+            ssh-keygen -f ~/.ssh/known_hosts -R "$ip" 2>/dev/null || true
+        done
+
+        # Create temporary Ansible inventory with credentials
+        ANSIBLE_INVENTORY=$(mktemp)
+        for ip in $(echo "$IPS" | tr '\n' ' '); do
+            echo "$ip ansible_user=template ansible_ssh_pass=$TEMPLATE_PASSWORD ansible_become_password=$TEMPLATE_PASSWORD ansible_host_key_checking=False" >> "$ANSIBLE_INVENTORY"
+        done
     fi
 
-    if [ -z "$IPS" ]; then
-        echo "❌ Error: No IP addresses found in virtual_machines.yml" >&2
-        exit 1
+    if [ -n "$ANSIBLE_INVENTORY" ]; then
+        echo ""
+        echo "Running Ansible playbooks..."
+
+        # Run remove_cloud_init playbook
+        echo "  • Running remove_cloud_init playbook..."
+        if ! ansible-playbook -i "$ANSIBLE_INVENTORY" "$SCRIPT_DIR/ansible/remove_cloud_init.yml"; then
+            echo "❌ Error: remove_cloud_init playbook failed" >&2
+            exit 1
+        fi
+        echo "  ✅ remove_cloud_init completed"
+
+        echo ""
+
+        # Run customize_vm playbook
+        echo "  • Running customize_vm playbook..."
+        if ! ansible-playbook -i "$ANSIBLE_INVENTORY" "$SCRIPT_DIR/ansible/customize_vm.yml"; then
+            echo "❌ Error: customize_vm playbook failed" >&2
+            exit 1
+        fi
+        echo "  ✅ customize_vm completed"
+
+        echo ""
+        echo "✅ All Ansible playbooks completed successfully!"
+    else
+        echo ""
+        echo "⏭️  Skipping automated Ansible playbooks (custom users configured)"
+        echo "   Run manually when ready:"
+        echo "   ansible-playbook -i <inventory> $SCRIPT_DIR/ansible/remove_cloud_init.yml"
+        echo "   ansible-playbook -i <inventory> $SCRIPT_DIR/ansible/customize_vm.yml"
     fi
-
-    # Format IPs for Ansible inventory (comma-separated)
-    IPS_COMMA=$(echo "$IPS" | tr '\n' ',' | sed 's/,$//')
-
-    echo ""
-    echo "Running Ansible playbooks..."
-
-    # Run remove_cloud_init playbook
-    echo "  • Running remove_cloud_init playbook..."
-    if ! ansible-playbook -i "$IPS_COMMA," "$SCRIPT_DIR/ansible/remove_cloud_init.yml"; then
-        echo "❌ Error: remove_cloud_init playbook failed" >&2
-        exit 1
-    fi
-    echo "  ✅ remove_cloud_init completed"
-
-    echo ""
-
-    # Run customize_vm playbook
-    echo "  • Running customize_vm playbook..."
-    if ! ansible-playbook -i "$IPS_COMMA," "$SCRIPT_DIR/ansible/customize_vm.yml"; then
-        echo "❌ Error: customize_vm playbook failed" >&2
-        exit 1
-    fi
-    echo "  ✅ customize_vm completed"
-
-    echo ""
-    echo "✅ All Ansible playbooks completed successfully!"
 }
 
 # Main execution
