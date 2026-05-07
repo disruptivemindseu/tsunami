@@ -11,6 +11,9 @@
       ansible.builtin.pause:
         seconds: 60
 
+    - name: Gather facts after reboot
+      ansible.builtin.setup:
+
     - name: Check if cloud-init network config exists
       ansible.builtin.stat:
         path: /etc/network/interfaces.d/50-cloud-init
@@ -119,6 +122,12 @@
       ansible.builtin.debug:
         msg: "Cloud-init has been removed (no network config file found)"
       when: not cloud_init_config_file.stat.exists
+
+    - name: Update package # noqa package-latest
+      ansible.builtin.apt:
+        update_cache: true
+        name: '*'
+        state: latest
 
     - name: Reboot the system
       ansible.builtin.reboot:
