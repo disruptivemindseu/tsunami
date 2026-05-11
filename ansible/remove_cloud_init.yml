@@ -1,0 +1,152 @@
+---
+- name: Remove cloud-init packages and dependencies
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    ansible_ssh_common_args: -o StrictHostKeyChecking=false
+  tasks:
+
+    - name: Wait 60 seconds before attempting SSH (first connection - system boot)
+      ansible.builtin.pause:
+        seconds: 60
+
+    - name: Gather facts after reboot
+      ansible.builtin.setup:
+
+    - name: Check if cloud-init network config exists
+      ansible.builtin.stat:
+        path: /etc/network/interfaces.d/50-cloud-init
+      register: cloud_init_config_file
+
+    - name: Read cloud-init network config
+      ansible.builtin.slurp:
+        src: /etc/network/interfaces.d/50-cloud-init
+      become: true
+      register: cloud_init_config
+      when: cloud_init_config_file.stat.exists
+
+    - name: Parse IPv4 address
+      ansible.builtin.set_fact:
+        ipv4_address_full: "{{ cloud_init_config.content | b64decode | regex_search('address (\\S+)', '\\1') | first }}"
+      when: cloud_init_config_file.stat.exists
+
+    - name: Parse IPv4 gateway
+      ansible.builtin.set_fact:
+        ipv4_gateway: "{{ cloud_init_config.content | b64decode | regex_search('gateway (\\S+)', '\\1') | first }}"
+      when: cloud_init_config_file.stat.exists
+
+    - name: Parse IPv6 address
+      ansible.builtin.set_fact:
+        ipv6_address_full: "{{ (cloud_init_config.content | b64decode | regex_search('inet6[\\s\\S]*?address (\\S+)', '\\1') or []) | first | default('') }}"
+      when: cloud_init_config_file.stat.exists
+
+    - name: Parse IPv6 gateway
+      ansible.builtin.set_fact:
+        ipv6_gateway: "{{ (cloud_init_config.content | b64decode | regex_search('inet6[\\s\\S]*?gateway (\\S+)', '\\1') or []) | first | default('') }}"
+      when: cloud_init_config_file.stat.exists
+
+    - name: Parse DNS nameservers
+      ansible.builtin.set_fact:
+        dns_nameservers: "{{ cloud_init_config.content | b64decode | regex_search('dns-nameservers (.*)', '\\1') | first }}"
+      when: cloud_init_config_file.stat.exists
+
+    - name: Parse DNS search domain
+      ansible.builtin.set_fact:
+        dns_search: "{{ cloud_init_config.content | b64decode | regex_search('dns-search (.*)', '\\1') | first }}"
+      when: cloud_init_config_file.stat.exists
+
+    - name: Ensure sudo is installed
+      ansible.builtin.apt:
+        name: sudo
+        state: present
+
+    - name: Remove cloud-init packages and dependencies
+      ansible.builtin.apt:
+        name: cloud-init
+        state: absent
+        autoremove: true
+        purge: true
+      when: ansible_facts["os_family"] == "Debian"
+      register: cloud_init_removed
+
+    - name: Remove cloud-init generated network config
+      ansible.builtin.file:
+        path: /etc/network/interfaces.d/50-cloud-init
+        state: absent
+
+    - name: Remove cloud-init generated SSH config
+      ansible.builtin.file:
+        path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+        state: absent
+
+    - name: Create /etc/network/interfaces
+      ansible.builtin.copy:
+        content: |
+          # This file describes the network interfaces available on your system
+          # and how to activate them. For more information, see interfaces(5).
+
+          source /etc/network/interfaces.d/*
+
+          # The loopback network interface
+          auto lo
+          iface lo inet loopback
+
+          # The primary network interface
+          auto enX0
+          iface enX0 inet static
+            address {{ ipv4_address_full }}
+            gateway {{ ipv4_gateway }}
+            dns-nameservers {{ dns_nameservers }}
+            dns-search {{ dns_search }}
+          {% if ipv6_address_full %}
+
+          iface enX0 inet6 static
+            address {{ ipv6_address_full }}
+            gateway {{ ipv6_gateway }}
+          {% endif %}
+        dest: /etc/network/interfaces
+        backup: true
+        mode: '0644'
+      when: cloud_init_config_file.stat.exists
+
+    - name: Display removal result
+      ansible.builtin.debug:
+        msg: |
+          Cloud-init has been removed and network configuration updated
+          IPv4: {{ ipv4_address_full }} (gw: {{ ipv4_gateway }})
+          {% if ipv6_address_full %}IPv6: {{ ipv6_address_full }} (gw: {{ ipv6_gateway }}){% endif %}
+      when: cloud_init_config_file.stat.exists
+
+    - name: Display removal result (no config file)
+      ansible.builtin.debug:
+        msg: "Cloud-init has been removed (no network config file found)"
+      when: not cloud_init_config_file.stat.exists
+
+    - name: Update package # noqa package-latest
+      ansible.builtin.apt:
+        update_cache: true
+        name: '*'
+        state: latest
+
+    - name: Reboot the system
+      ansible.builtin.reboot:
+        msg: "Rebooting after cloud-init removal"
+        connect_timeout: 5
+        reboot_timeout: 300
+        pre_reboot_delay: 0
+        post_reboot_delay: 30
+
+    - name: Wait for system to come back online
+      ansible.builtin.wait_for_connection:
+        delay: 10
+        timeout: 300
+
+    - name: Verify cloud-init is removed
+      ansible.builtin.shell: set -o pipefail && dpkg -l | grep cloud-init || echo "Cloud-init successfully removed"
+      register: cloud_init_check
+      changed_when: false
+
+    - name: Display verification result
+      ansible.builtin.debug:
+        msg: "{{ cloud_init_check.stdout }}"

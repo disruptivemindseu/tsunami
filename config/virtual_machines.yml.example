@@ -1,0 +1,55 @@
+---
+vm1.example.com:
+  # Optional: override the VM name in Xen Orchestra (defaults to "vm1.example.com" if not set)
+  # name: "application-server"
+  description: Primary application server
+  boot_firmware: uefi
+  cpus: 4
+  disks:
+    - name: system
+      size: 32
+  memory: 8192
+  networks:
+    - dns_search:
+        - example.com
+      dns_servers:
+        - 192.168.0.11
+        - 192.168.0.12
+      gateway: 192.168.0.254
+      gateway6: 2001:db8::1
+      ip: 192.168.0.102/24
+      ipv6: 2001:db8::11/64
+      name: Public Network
+  pool: Example Pool
+  sr: Example Storage
+  tags:
+    - example
+    - test
+  template: Debian 13 (cloud-init)
+vm2.example.com:
+  # Optional: example with custom VM name
+  # name: "backup-server"
+  description: Secondary backup server
+  boot_firmware: uefi
+  cpus: 2
+  disks:
+    - name: system
+      size: 32
+  memory: 4096
+  networks:
+    - dns_search:
+        - example.com
+      dns_servers:
+        - 192.168.0.11
+        - 192.168.0.12
+      gateway: 192.168.0.254
+      gateway6: 2001:db8::1
+      ip: 192.168.0.101/24
+      ipv6: 2001:db8::10/64
+      name: Public Network
+  pool: Example Pool
+  sr: Example Storage
+  tags:
+    - example
+    - test
+  template: Debian 13 (cloud-init)

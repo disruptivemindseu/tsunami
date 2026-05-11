@@ -1,0 +1,22 @@
+---
+- name: Customize virtual machines
+  hosts: all
+  become: true
+  vars:
+    ansible_ssh_common_args: -o StrictHostKeyChecking=false
+  tasks:
+
+    - name: Update package cache and install packages
+      ansible.builtin.apt:
+        name:
+          - vim
+          - tmux
+          - bash-completion
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_facts["os_family"] == "Debian"
+
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg: "VM customization completed - vim, tmux, and bash-completion installed"

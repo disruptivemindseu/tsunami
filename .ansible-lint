@@ -1,0 +1,4 @@
+---
+# Ansible-lint configuration
+exclude_paths:
+  - config/
