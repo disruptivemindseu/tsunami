@@ -1,7 +1,6 @@
 ---
 - name: Customize virtual machines
   hosts: all
-  gather_facts: false
   become: true
   vars:
     ansible_ssh_common_args: -o StrictHostKeyChecking=false
